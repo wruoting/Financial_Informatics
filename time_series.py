@@ -4,7 +4,7 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.tsa.arima_model import ARMA
 from statsmodels.tsa.ar_model import AR
-from statsmodels.tsa.stattools import acf
+from statsmodels.tsa.stattools import acf, adfuller, kpss
 from sklearn.metrics import mean_squared_error
 
 import datetime
@@ -62,12 +62,11 @@ def ar_model(train_range, time_series_raw):
     start_date_train = time_series_raw['Date'].iloc[0]
     end_date_train = time_series_raw['Date'].iloc[train_range]
     model = AR(train, dates=pd.date_range(start=start_date_train, end=end_date_train))
-    model_fit = model.fit()
+    model_fit = model.fit(maxlag=1)
     print('Lag: %s' % model_fit.k_ar)
     print('Coefficients: %s' % model_fit.params)
     # model fit predict
     predictions = model_fit.predict(start=len(train), end=len(train) + len(test) - 1, dynamic=False)
-    print(test)
     predictions.index = pd.DatetimeIndex(data=time_series_raw['Date'].iloc[train_range:-1])
     print(predictions)
     mse = mean_squared_error(predictions, test)
@@ -77,7 +76,39 @@ def ar_model(train_range, time_series_raw):
     plt.show()
 
 
+# Dickey fuller test to test if time series is stationary
+# https://machinelearningmastery.com/time-series-data-stationary-python/
+# https://www.analyticsvidhya.com/blog/2018/09/non-stationary-time-series-python/
+# Null hypothesis is that this series is not stationary
+# p <= 0.05 indicates that this series is stationary
+def dickey(time_series_raw):
+    result = adfuller(time_series_raw['Value'])
+    dickey_output = pd.Series(result[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+    print (dickey_output)
 
+
+# Null hypothesis is that the time series is stationary
+# p <= 0.5 indicates that the series is not stationary
+def kpss_test(time_series_raw):
+    print ('Results of KPSS Test:')
+    kpsstest = kpss(time_series_raw['Value'])
+    kpss_output = pd.Series(kpsstest[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
+    for key, value in kpsstest[3].items():
+        kpss_output['Critical Value (%s)' % key] = value
+    print (kpss_output)
+
+
+def diff_series(time_series_raw, diff=1):
+    values = time_series_raw['Value']
+    for d in range(1, diff+1):
+        values = values - values.shift(1)
+        values = values.dropna()
+    values = values.to_frame()
+    values.iloc[1].name = 'Value'
+    return values
 
 time_series_hog = open_data(path="{}".format('./ODA-PPORK_USD_LEAN_HOG_1980_2017.csv'))
 time_series_soybean = open_data(path="{}".format('./ODA-PSOYB_USD_SOYBEAN_PRICE_1980_2017.csv'))
@@ -98,5 +129,18 @@ time_series_soybean = parse_into_dataframe(time_series_soybean)
 # plt.close()
 
 # plot_seasonal_decompose(time_series_hog)
-ar_model(100, time_series_hog)
+def no_diff_series(time_series_raw):
+    ar_model(100, time_series_raw)
+    dickey(time_series_raw)
+    kpss_test(time_series_raw)
 
+
+def diff_one_series(time_series_raw):
+    shift_one = diff_series(time_series_raw)
+    dickey(shift_one)
+    kpss_test(shift_one)
+    shift_one['Date'] = shift_one.index
+    # ar_model(100, shift_one)
+    plot_acf_data(shift_one)
+
+diff_one_series(time_series_hog)
