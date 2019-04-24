@@ -5,7 +5,9 @@ import statsmodels.formula.api as smf
 from statsmodels.tsa.arima_model import ARMA
 from statsmodels.tsa.ar_model import AR
 from statsmodels.tsa.stattools import acf, adfuller, kpss
+from statsmodels.graphics.tsaplots import plot_pacf
 from sklearn.metrics import mean_squared_error
+
 
 import datetime
 import matplotlib.pyplot as plt
@@ -35,18 +37,20 @@ def parse_into_dataframe(data):
     return data_frame
 
 
-def plot_raw_data(time_series_raw):
+def plot_raw_data(time_series_raw, name=None):
     plt.plot(time_series_raw['Date'],  time_series_raw['Value'])
     plt.xlabel("Date")
     plt.ylabel("Price")
-    plt.show()
+    plt.savefig(name)
+    plt.close()
 
 
-def plot_acf_data(time_series_raw, nlags=50):
+def plot_acf_data(time_series_raw, nlags=50, name=None):
     plt.bar(np.arange(0, nlags+1), acf(time_series_raw['Value'], nlags=nlags), width=0.5)
     plt.xlabel("Lag")
     plt.ylabel("ACF")
-    plt.show()
+    plt.savefig(name)
+    plt.close()
 
 
 def plot_seasonal_decompose(time_series_raw):
@@ -57,22 +61,34 @@ def plot_seasonal_decompose(time_series_raw):
 
 
 # https://machinelearningmastery.com/autoregression-models-time-series-forecasting-python/
-def ar_model(train_range, time_series_raw):
-    train, test = time_series_raw['Value'].iloc[0:train_range], time_series_raw['Value'].iloc[train_range:-1]
-    start_date_train = time_series_raw['Date'].iloc[0]
-    end_date_train = time_series_raw['Date'].iloc[train_range]
-    model = AR(train, dates=pd.date_range(start=start_date_train, end=end_date_train))
-    model_fit = model.fit(maxlag=1)
-    print('Lag: %s' % model_fit.k_ar)
-    print('Coefficients: %s' % model_fit.params)
-    # model fit predict
-    predictions = model_fit.predict(start=len(train), end=len(train) + len(test) - 1, dynamic=False)
-    predictions.index = pd.DatetimeIndex(data=time_series_raw['Date'].iloc[train_range:-1])
-    print(predictions)
-    mse = mean_squared_error(predictions, test)
-    print('MSE: %s' % mse)
-    plt.plot(predictions)
-    plt.plot(test)
+def ar_model(time_series_raw, time_lag=10):
+    time_lag = time_lag + 1 #one extra for time lag
+    train_length = len(time_series_raw['Value']) - time_lag
+    y_hat = []
+    mse_arr = []
+    for train_index in range(0, train_length):
+        train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
+        start_date_train = time_series_raw['Date'].iloc[train_index]
+        end_date_train = time_series_raw['Date'].iloc[train_index+time_lag]
+        model = AR(train, dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
+        model_fit = model.fit(maxlag=1)
+        print(end_date_train)
+        print('Lag: %s' % model_fit.k_ar)
+        print('Coefficients: %s' % model_fit.params)
+        # model fit predict
+        predictions = model_fit.predict(start=end_date_train, end=end_date_train, dynamic=False)
+        # predictions.index = pd.DatetimeIndex(data=time_series_raw['Date'].iloc[train_index+time_lag])
+        y_hat.append(predictions)
+        # mse = mean_squared_error(predictions, test)
+        # mse_arr.append(mse)
+        # print('MSE: %s' % mse)
+
+    mean_value = time_series_raw['Value'].mean
+    print(mean_value)
+    y_hat_normalized = y_hat
+    plt.plot(y_hat_normalized)
+
+    # plt.plot(time_series_raw['Value'])
     plt.show()
 
 
@@ -84,6 +100,7 @@ def ar_model(train_range, time_series_raw):
 def dickey(time_series_raw):
     result = adfuller(time_series_raw['Value'])
     dickey_output = pd.Series(result[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
+    print('Results of Dickey Test')
     print('Critical Values:')
     for key, value in result[4].items():
         print('\t%s: %.3f' % (key, value))
@@ -116,31 +133,24 @@ time_series_soybean = open_data(path="{}".format('./ODA-PSOYB_USD_SOYBEAN_PRICE_
 time_series_hog = parse_into_dataframe(time_series_hog)
 time_series_soybean = parse_into_dataframe(time_series_soybean)
 
-# plot_raw_data(time_series_hog)
-# plot_acf_data(time_series_hog)
-
-# test = AR(time_series_hog['Value'])
-# test.select_order(maxlag=1, ic='aic')
-# print(test)
-# mod = ARMA(time_series_hog['Value'], order=(1, 0))
-# res = mod.fit()
-# res.plot_predict(start=time_series_hog['Date'].size-time_series_hog['Date'].size, end=time_series_hog['Date'].size+10)
-# plt.show()
-# plt.close()
 
 # plot_seasonal_decompose(time_series_hog)
-def no_diff_series(time_series_raw):
-    ar_model(100, time_series_raw)
+def no_diff_series(time_series_raw, name=None):
     dickey(time_series_raw)
     kpss_test(time_series_raw)
+    ar_model(time_series_raw)
+    plot_acf_data(time_series_raw, name=name)
 
 
-def diff_one_series(time_series_raw):
+def diff_one_series(time_series_raw, name=None):
     shift_one = diff_series(time_series_raw)
     dickey(shift_one)
     kpss_test(shift_one)
     shift_one['Date'] = shift_one.index
-    # ar_model(100, shift_one)
-    plot_acf_data(shift_one)
+    ar_model(shift_one)
+    #plot_acf_data(shift_one, name=name)
 
-diff_one_series(time_series_hog)
+
+diff_one_series(time_series_hog, 'diff_one_series_hog')
+# diff_one_series(time_series_soybean, 'diff_one_series_soybean')
+
