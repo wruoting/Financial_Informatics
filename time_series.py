@@ -61,17 +61,17 @@ def plot_seasonal_decompose(time_series_raw):
 
 
 # https://machinelearningmastery.com/autoregression-models-time-series-forecasting-python/
-def ar_model(time_series_raw, time_lag=7, max_lag=1):
-    time_lag = time_lag + 1 #one extra for time lag
+def ar_model(time_series_raw, time_lag=10, max_lag=1):
     train_length = len(time_series_raw['Value']) - time_lag
     y_hat = pd.DataFrame([], columns=['Value'])
     for train_index in range(0, train_length):
         train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
         start_date_train = time_series_raw['Date'].iloc[train_index]
-        end_date_train = time_series_raw['Date'].iloc[train_index+time_lag]
+        end_date_train = time_series_raw['Date'].iloc[train_index+time_lag-1]
+        predict_test = time_series_raw['Date'].iloc[train_index+time_lag]
         model = AR(train, dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
-        model_fit = model.fit(max_lag=max_lag)
-        predictions = model_fit.predict(start=end_date_train, end=end_date_train, dynamic=False)
+        model_fit = model.fit(maxlag=max_lag)
+        predictions = model_fit.predict(start=predict_test, end=predict_test, dynamic=True)
         predictions = pd.DataFrame(predictions[0], columns=['Value'],
                                    index=pd.DatetimeIndex(data=predictions.index.date))
         y_hat = y_hat.append(predictions)
@@ -82,9 +82,13 @@ def ar_model(time_series_raw, time_lag=7, max_lag=1):
     diff_score = diff_score.dropna()**2
     mse = diff_score.sum()
     print("MSE: {}".format(mse))
-    plt.plot(y_hat.index, y_hat['Value'])
-    plt.plot(time_series_raw.index, time_series_raw['Value'])
-    plt.show()
+    # plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+    # plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+    # plt.legend(loc='upper left')
+    # plt.title("AR Model")
+    # plt.xlabel("Date")
+    # plt.ylabel("Offset 1 Diff")
+    # plt.show()
 
 
 # Dickey fuller test to test if time series is stationary
@@ -92,8 +96,8 @@ def ar_model(time_series_raw, time_lag=7, max_lag=1):
 # https://www.analyticsvidhya.com/blog/2018/09/non-stationary-time-series-python/
 # Null hypothesis is that this series is not stationary
 # p <= 0.05 indicates that this series is stationary
-def dickey(time_series_raw):
-    result = adfuller(time_series_raw['Value'])
+def dickey(time_series_raw, max_lag=None):
+    result = adfuller(time_series_raw['Value'], maxlag=max_lag)
     dickey_output = pd.Series(result[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
     print('Results of Dickey Test')
     print('Critical Values:')
@@ -104,9 +108,9 @@ def dickey(time_series_raw):
 
 # Null hypothesis is that the time series is stationary
 # p <= 0.5 indicates that the series is not stationary
-def kpss_test(time_series_raw):
+def kpss_test(time_series_raw, max_lag=None):
     print ('Results of KPSS Test:')
-    kpsstest = kpss(time_series_raw['Value'])
+    kpsstest = kpss(time_series_raw['Value'], lags=max_lag)
     kpss_output = pd.Series(kpsstest[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
     for key, value in kpsstest[3].items():
         kpss_output['Critical Value (%s)' % key] = value
@@ -130,22 +134,27 @@ time_series_soybean = parse_into_dataframe(time_series_soybean)
 
 
 # plot_seasonal_decompose(time_series_hog)
-def no_diff_series(time_series_raw, name=None):
-    dickey(time_series_raw)
-    kpss_test(time_series_raw)
-    ar_model(time_series_raw)
+def no_diff_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None,  max_lag=None):
+    if dickey_toggle:
+        dickey(time_series_raw, max_lag=max_lag)
+    if kpss_toggle:
+        kpss_test(time_series_raw, max_lag=max_lag)
+    # ar_model(time_series_raw,  max_lag=max_lag)
     plot_acf_data(time_series_raw, name=name)
 
 
-def diff_one_series(time_series_raw, name=None):
+def diff_one_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None, max_lag=None):
     shift_one = diff_series(time_series_raw)
-    dickey(shift_one)
-    kpss_test(shift_one)
+    if dickey_toggle:
+        dickey(shift_one, max_lag=max_lag)
+    if kpss_toggle:
+        kpss_test(shift_one, max_lag=max_lag)
     shift_one['Date'] = shift_one.index
-    ar_model(shift_one)
-    #plot_acf_data(shift_one, name=name)
+    # ar_model(shift_one, max_lag=max_lag)
+    plot_acf_data(shift_one, name=name)
 
 
-diff_one_series(time_series_hog, 'diff_one_series_hog')
+no_diff_series(time_series_hog, max_lag=0, name='no_diff_series_hog')
+diff_one_series(time_series_hog, max_lag=0, name='diff_one_series_hog')
 # diff_one_series(time_series_soybean, 'diff_one_series_soybean')
 
