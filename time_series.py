@@ -61,34 +61,29 @@ def plot_seasonal_decompose(time_series_raw):
 
 
 # https://machinelearningmastery.com/autoregression-models-time-series-forecasting-python/
-def ar_model(time_series_raw, time_lag=10):
+def ar_model(time_series_raw, time_lag=7, max_lag=1):
     time_lag = time_lag + 1 #one extra for time lag
     train_length = len(time_series_raw['Value']) - time_lag
-    y_hat = []
-    mse_arr = []
+    y_hat = pd.DataFrame([], columns=['Value'])
     for train_index in range(0, train_length):
         train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
         start_date_train = time_series_raw['Date'].iloc[train_index]
         end_date_train = time_series_raw['Date'].iloc[train_index+time_lag]
         model = AR(train, dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
-        model_fit = model.fit(maxlag=1)
-        print(end_date_train)
-        print('Lag: %s' % model_fit.k_ar)
-        print('Coefficients: %s' % model_fit.params)
-        # model fit predict
+        model_fit = model.fit(max_lag=max_lag)
         predictions = model_fit.predict(start=end_date_train, end=end_date_train, dynamic=False)
-        # predictions.index = pd.DatetimeIndex(data=time_series_raw['Date'].iloc[train_index+time_lag])
-        y_hat.append(predictions)
-        # mse = mean_squared_error(predictions, test)
-        # mse_arr.append(mse)
-        # print('MSE: %s' % mse)
-
-    mean_value = time_series_raw['Value'].mean
-    print(mean_value)
-    y_hat_normalized = y_hat
-    plt.plot(y_hat_normalized)
-
-    # plt.plot(time_series_raw['Value'])
+        predictions = pd.DataFrame(predictions[0], columns=['Value'],
+                                   index=pd.DatetimeIndex(data=predictions.index.date))
+        y_hat = y_hat.append(predictions)
+    # Drop the first time_lag+1 rows
+    time_series_raw = time_series_raw[time_lag:]
+    # MSE
+    diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
+    diff_score = diff_score.dropna()**2
+    mse = diff_score.sum()
+    print("MSE: {}".format(mse))
+    plt.plot(y_hat.index, y_hat['Value'])
+    plt.plot(time_series_raw.index, time_series_raw['Value'])
     plt.show()
 
 
