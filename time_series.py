@@ -69,7 +69,7 @@ def plot_seasonal_decompose(time_series_raw):
 
 
 # https://machinelearningmastery.com/autoregression-models-time-series-forecasting-python/
-def ar_model(time_series_raw, time_lag=10, max_lag=1, y_label=''):
+def ar_model(time_series_raw, time_lag=10, max_lag=1, y_label='', name=None, title="AR Model"):
     train_length = len(time_series_raw['Value']) - time_lag
     y_hat = pd.DataFrame([], columns=['Value'])
     for train_index in range(0, train_length):
@@ -90,13 +90,14 @@ def ar_model(time_series_raw, time_lag=10, max_lag=1, y_label=''):
     diff_score = diff_score.dropna()**2
     mse = diff_score.sum()
     print("MSE: {}".format(mse))
-    plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
     plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+    plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
     plt.legend(loc='upper left')
-    plt.title("AR Model")
+    plt.title(title)
     plt.xlabel("Date")
     plt.ylabel(y_label)
-    # plt.show()
+    plt.savefig(name)
+    plt.close()
 
 
 def arma_model(time_series_raw, coefficients=None, time_lag=10, max_lag=1, y_label=''):
@@ -126,7 +127,7 @@ def arma_model(time_series_raw, coefficients=None, time_lag=10, max_lag=1, y_lab
     plt.title("ARMA Model")
     plt.xlabel("Date")
     plt.ylabel(y_label)
-    # plt.show()
+    plt.show()
 
 
 # Dickey fuller test to test if time series is stationary
@@ -164,12 +165,6 @@ def diff_series(time_series_raw, diff=1):
     values.iloc[1].name = 'Value'
     return values
 
-time_series_hog = open_data(path="{}".format('./ODA-PPORK_USD_LEAN_HOG_1980_2017.csv'))
-time_series_soybean = open_data(path="{}".format('./ODA-PSOYB_USD_SOYBEAN_PRICE_1980_2017.csv'))
-
-time_series_hog = parse_into_dataframe(time_series_hog)
-time_series_soybean = parse_into_dataframe(time_series_soybean)
-
 
 # plot_seasonal_decompose(time_series_hog)
 def no_diff_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None, max_lag=None):
@@ -193,9 +188,16 @@ def diff_one_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, nam
         plot_acf_data(shift_one, name=name)
     return shift_one
 
+
+time_series_hog = open_data(path="{}".format('./ODA-PPORK_USD_LEAN_HOG_1980_2017.csv'))
+time_series_soybean = open_data(path="{}".format('./ODA-PSOYB_USD_SOYBEAN_PRICE_1980_2017.csv'))
+
+time_series_hog = parse_into_dataframe(time_series_hog)
+time_series_soybean = parse_into_dataframe(time_series_soybean)
+
 ## No diff series and shift one series for AR models as well as potential dickey and kpss modeling
-no_diff_series = no_diff_series(time_series_hog, max_lag=0, name='no_diff_series_hog')
-shift_one_series = diff_one_series(time_series_hog, max_lag=0, name='diff_one_series_hog')
+no_diff_series_hog = no_diff_series(time_series_hog, max_lag=0, name='no_diff_series_hog')
+shift_one_series_hog = diff_one_series(time_series_hog, max_lag=0, name='diff_one_series_hog')
 # ar_model(no_diff_series, max_lag=1,  y_label='No Diff Values')
 # ar_model(shift_one_series, max_lag=1, y_label='Diff 1 Values')
 # plot_acf_data(no_diff_series, name='ACF_diff_0')
@@ -207,14 +209,20 @@ shift_one_series = diff_one_series(time_series_hog, max_lag=0, name='diff_one_se
 # plot_acf_data(shift_two_series, name='ACF_diff_2')
 
 # Can we improve on this series with an ARIMA?
-# arma_model(no_diff_series, coefficients=[1, 0], max_lag=1, y_label='Diff 1 Values')
-ar_model(shift_one_series, max_lag=0, y_label='Diff 1 Values')
-arma_model(shift_one_series, coefficients=[0, 1], max_lag=0, y_label='Diff 1 Values')
+# ar_model(no_diff_series_hog, max_lag=0, y_label='Diff 0 Values', name='Diff_0_Overlay', title='AR(0) Model')
+# ar_model(no_diff_series_hog, max_lag=1, y_label='Diff 1 Values', name='Diff_1_Overlay', title='AR(1) Model')
+# arma_model(no_diff_series, coefficients=[1, 1], max_lag=1, y_label='Diff 1 Values')
+# arma_model(shift_one_series, coefficients=[0, 1], max_lag=0, y_label='Diff 1 Values')
 
 
 # Max lag 0 is the best for no ar model (looks like an AR(1))
 # We can see that arma 0, 1 for a shift doesn't have as good a result
 # We could smooth the data with mean and try to get a better MSE with that?
+
+## Soy Futures
+
+no_diff_series_soy = no_diff_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='no_diff_series_soy')
+shift_one_series_soy = diff_one_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='diff_one_series_soy')
 
 #
 # ADF (Augmented Dickey Fuller)
