@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
-from statsmodels.tsa.arima_model import ARMA
+from statsmodels.tsa.arima_model import ARMA, ARIMA
 from statsmodels.tsa.ar_model import AR
-from statsmodels.tsa.stattools import acf, adfuller, kpss
+from statsmodels.tsa.stattools import acf, adfuller, kpss, pacf
 from statsmodels.graphics.tsaplots import plot_pacf
 from sklearn.metrics import mean_squared_error
 
@@ -53,6 +53,14 @@ def plot_acf_data(time_series_raw, nlags=50, name=None):
     plt.close()
 
 
+def plot_pacf_data(time_series_raw, nlags=50, name=None):
+    plt.bar(np.arange(0, nlags+1), pacf(time_series_raw['Value'], nlags=nlags), width=0.5)
+    plt.xlabel("Lag")
+    plt.ylabel("PACF")
+    plt.savefig(name)
+    plt.close()
+
+
 def plot_seasonal_decompose(time_series_raw):
     time_series_raw = time_series_raw.drop(columns='Date')
     decomposition = sm.tsa.seasonal_decompose(time_series_raw, model='additive')
@@ -61,7 +69,7 @@ def plot_seasonal_decompose(time_series_raw):
 
 
 # https://machinelearningmastery.com/autoregression-models-time-series-forecasting-python/
-def ar_model(time_series_raw, time_lag=10, max_lag=1):
+def ar_model(time_series_raw, time_lag=10, max_lag=1, y_label=''):
     train_length = len(time_series_raw['Value']) - time_lag
     y_hat = pd.DataFrame([], columns=['Value'])
     for train_index in range(0, train_length):
@@ -82,12 +90,42 @@ def ar_model(time_series_raw, time_lag=10, max_lag=1):
     diff_score = diff_score.dropna()**2
     mse = diff_score.sum()
     print("MSE: {}".format(mse))
-    # plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
-    # plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
-    # plt.legend(loc='upper left')
-    # plt.title("AR Model")
-    # plt.xlabel("Date")
-    # plt.ylabel("Offset 1 Diff")
+    plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+    plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+    plt.legend(loc='upper left')
+    plt.title("AR Model")
+    plt.xlabel("Date")
+    plt.ylabel(y_label)
+    # plt.show()
+
+
+def arma_model(time_series_raw, coefficients=None, time_lag=10, max_lag=1, y_label=''):
+    train_length = len(time_series_raw['Value']) - time_lag
+    y_hat = pd.DataFrame([], columns=['Value'])
+    for train_index in range(0, train_length):
+        train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
+        start_date_train = time_series_raw['Date'].iloc[train_index]
+        end_date_train = time_series_raw['Date'].iloc[train_index+time_lag-1]
+        predict_test = time_series_raw['Date'].iloc[train_index+time_lag]
+        model = ARMA(train, [coefficients[0], coefficients[1]], dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
+        model_fit = model.fit(maxlag=max_lag, disp=-1)
+        predictions = model_fit.predict(start=predict_test, end=predict_test, dynamic=True)
+        predictions = pd.DataFrame(predictions[0], columns=['Value'],
+                                   index=pd.DatetimeIndex(data=predictions.index.date))
+        y_hat = y_hat.append(predictions)
+    # Drop the first time_lag+1 rows
+    time_series_raw = time_series_raw[time_lag:]
+    # MSE
+    diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
+    diff_score = diff_score.dropna()**2
+    mse = diff_score.sum()
+    print("MSE: {}".format(mse))
+    plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+    plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+    plt.legend(loc='upper left')
+    plt.title("ARMA Model")
+    plt.xlabel("Date")
+    plt.ylabel(y_label)
     # plt.show()
 
 
@@ -120,7 +158,7 @@ def kpss_test(time_series_raw, max_lag=None):
 def diff_series(time_series_raw, diff=1):
     values = time_series_raw['Value']
     for d in range(1, diff+1):
-        values = values - values.shift(1)
+        values = values.shift(1) - values
         values = values.dropna()
     values = values.to_frame()
     values.iloc[1].name = 'Value'
@@ -134,13 +172,14 @@ time_series_soybean = parse_into_dataframe(time_series_soybean)
 
 
 # plot_seasonal_decompose(time_series_hog)
-def no_diff_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None,  max_lag=None):
+def no_diff_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None, max_lag=None):
     if dickey_toggle:
         dickey(time_series_raw, max_lag=max_lag)
     if kpss_toggle:
         kpss_test(time_series_raw, max_lag=max_lag)
-    # ar_model(time_series_raw,  max_lag=max_lag)
-    plot_acf_data(time_series_raw, name=name)
+    if name:
+        plot_acf_data(time_series_raw, name=name)
+    return time_series_raw
 
 
 def diff_one_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None, max_lag=None):
@@ -150,11 +189,31 @@ def diff_one_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, nam
     if kpss_toggle:
         kpss_test(shift_one, max_lag=max_lag)
     shift_one['Date'] = shift_one.index
-    # ar_model(shift_one, max_lag=max_lag)
-    plot_acf_data(shift_one, name=name)
+    if name:
+        plot_acf_data(shift_one, name=name)
+    return shift_one
+
+## No diff series and shift one series for AR models as well as potential dickey and kpss modeling
+no_diff_series = no_diff_series(time_series_hog, max_lag=0, name='no_diff_series_hog')
+shift_one_series = diff_one_series(time_series_hog, max_lag=0, name='diff_one_series_hog')
+# ar_model(no_diff_series, max_lag=1,  y_label='No Diff Values')
+# ar_model(shift_one_series, max_lag=1, y_label='Diff 1 Values')
+# plot_acf_data(no_diff_series, name='ACF_diff_0')
+# plot_pacf_data(shift_one_series, name='PACF_diff_1')
+# plot_pacf_data(no_diff_series, name='PACF_diff_0')
+
+## Code used to generate diff two series
+# shift_two_series = diff_series(time_series_hog, diff=2)
+# plot_acf_data(shift_two_series, name='ACF_diff_2')
+
+# Can we improve on this series with an ARIMA?
+# arma_model(no_diff_series, coefficients=[1, 0], max_lag=1, y_label='Diff 1 Values')
+ar_model(shift_one_series, max_lag=0, y_label='Diff 1 Values')
+arma_model(shift_one_series, coefficients=[0, 1], max_lag=0, y_label='Diff 1 Values')
 
 
-no_diff_series(time_series_hog, max_lag=0, name='no_diff_series_hog')
-diff_one_series(time_series_hog, max_lag=0, name='diff_one_series_hog')
-# diff_one_series(time_series_soybean, 'diff_one_series_soybean')
+# Max lag 0 is the best for no ar model (looks like an AR(1))
+# We can see that arma 0, 1 for a shift doesn't have as good a result
+# We could smooth the data with mean and try to get a better MSE with that?
+
 
