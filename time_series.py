@@ -216,4 +216,13 @@ arma_model(shift_one_series, coefficients=[0, 1], max_lag=0, y_label='Diff 1 Val
 # We can see that arma 0, 1 for a shift doesn't have as good a result
 # We could smooth the data with mean and try to get a better MSE with that?
 
-
+#
+# ADF (Augmented Dickey Fuller)
+# https://freakonometrics.hypotheses.org/12729
+# https://www.investopedia.com/articles/trading/07/stationary.asp
+# https://www.xycoon.com/ma1_process.htm
+# https://machinelearningmastery.com/arima-for-time-series-forecasting-with-python/
+# https://freakonometrics.hypotheses.org/12729
+# https://www.analyticsvidhya.com/blog/2016/02/time-series-forecasting-codes-python/
+# Plotting rolling mean and std dev could help
+# https://machinelearningmastery.com/moving-average-smoothing-for-time-series-forecasting-python/
