@@ -10,7 +10,7 @@ from sklearn.metrics import mean_squared_error
 from seasonal_override import seasonal_decompose
 import itertools
 
-import datetime
+from datetime import datetime
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
@@ -134,7 +134,7 @@ def arma_model(time_series_raw, coefficients=None, time_lag=10, max_lag=1, y_lab
     plt.show()
 
 
-def arima_model(time_series_raw):
+def arima_brute_force_model(time_series_raw):
     p = d = q = range(0, 3)
     pdq = list(itertools.product(p, d, q))
     # We are going to brute force an arimax here
@@ -155,6 +155,107 @@ def arima_model(time_series_raw):
                 continue
         f.close()
         print('Done')
+
+
+def sarima_model(time_series_raw, time_lag=108, y_label=''):
+    train_length = len(time_series_raw['Value']) - time_lag
+    y_hat = pd.DataFrame([], columns=['Value'])
+    try:
+        f = open('ARIMAX_Predict.txt', 'r')
+        print('File exists')
+        # Drop the first time_lag+1 rows
+        time_series_raw = time_series_raw[time_lag:]
+        # MSE
+        diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
+        diff_score = diff_score.dropna()**2
+        mse = diff_score.sum()
+        print("MSE: {}".format(mse))
+        plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+        plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+        plt.legend(loc='upper left')
+        plt.title("SARIMA Model")
+        plt.xlabel("Date")
+        plt.ylabel(y_label)
+        plt.show()
+        f.close()
+
+    except FileNotFoundError:
+        f = open('ARIMAX_Predict.txt', 'w+')
+        for train_index in range(0, train_length):
+            train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
+            start_date_train = time_series_raw['Date'].iloc[train_index]
+            end_date_train = time_series_raw['Date'].iloc[train_index+time_lag-1]
+            predict_test = time_series_raw['Date'].iloc[train_index+time_lag]
+            model = sm.tsa.statespace.SARIMAX(train,
+                                              order=(1, 0, 2),
+                                              seasonal_order=(2, 2, 2, 12),
+                                              enforce_stationarity=False,
+                                              enforce_invertibility=False,
+                                              dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
+            model_fit = model.fit(disp=-1)
+            predictions = model_fit.predict(start=predict_test, end=predict_test, dynamic=False)
+            predictions = pd.DataFrame({'Value': [predictions[0]], 'Date': [predictions.index.date[0]]},
+                                       columns=['Value', 'Date'])
+            predictions.index = predictions['Date']
+            predictions = predictions.drop(columns='Date')
+            f.write('{}\t{}\n'.format(predictions.index.values[0], predictions['Value'][0]))
+            print('{}\t{}\n'.format(predictions.index.values[0], predictions['Value'][0]))
+            y_hat = y_hat.append(predictions)
+        # Drop the first time_lag+1 rows
+        time_series_raw = time_series_raw[time_lag:]
+        f.close()
+        # MSE
+        diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
+        diff_score = diff_score.dropna()**2
+        mse = diff_score.sum()
+        print("MSE: {}".format(mse))
+        plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+        plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+        plt.legend(loc='upper left')
+        plt.title("SARIMA Model")
+        plt.xlabel("Date")
+        plt.ylabel(y_label)
+        plt.show()
+
+
+def arima_model(time_series_raw, time_lag=108, y_label=''):
+    train_length = len(time_series_raw['Value']) - time_lag
+    y_hat = pd.DataFrame([], columns=['Value'])
+    try:
+        f = open('ARIMA_Predict.txt', 'r')
+        print('File exists')
+    except FileNotFoundError:
+        f = open('ARIMA_Predict.txt', 'w+')
+    for train_index in range(0, train_length):
+        train, test = time_series_raw['Value'].iloc[train_index:train_index+time_lag], time_series_raw['Value'].iloc[train_index+time_lag]
+        start_date_train = time_series_raw['Date'].iloc[train_index]
+        end_date_train = time_series_raw['Date'].iloc[train_index+time_lag-1]
+        predict_test = time_series_raw['Date'].iloc[train_index+time_lag]
+        model = ARIMA(train, (3, 0, 1), dates=pd.date_range(start=start_date_train, end=end_date_train, freq='M'))
+        model_fit = model.fit(disp=-1, start_params=(3, 0, 1))
+        predictions = model_fit.predict(start=predict_test, end=predict_test, dynamic=False)
+        predictions = pd.DataFrame({'Value': [predictions[0]], 'Date': [predictions.index.date[0]]},
+                                   columns=['Value', 'Date'])
+        predictions.index = predictions['Date']
+        predictions = predictions.drop(columns='Date')
+        f.write('{}\t{}\n'.format(predictions.index.values[0], predictions['Value'][0]))
+        print('{}\t{}\n'.format(predictions.index.values[0], predictions['Value'][0]))
+        y_hat = y_hat.append(predictions)
+    # Drop the first time_lag+1 rows
+    time_series_raw = time_series_raw[time_lag:]
+    f.close()
+    # MSE
+    diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
+    diff_score = diff_score.dropna()**2
+    mse = diff_score.sum()
+    print("MSE: {}".format(mse))
+    plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
+    plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
+    plt.legend(loc='upper left')
+    plt.title("ARIMA Model")
+    plt.xlabel("Date")
+    plt.ylabel(y_label)
+    plt.show()
 
 
 def sort_pdf_arima_txt():
@@ -322,5 +423,9 @@ shift_one_series_hog = diff_one_series(time_series_hog, max_lag=0, name='diff_on
 # plot_seasonal_decompose(no_diff_series_hog)
 # plot_raw_data(shift_one_series_hog, 'raw_time_series_hog_diff')
 
-# arima_model(no_diff_series_hog)
+## Let's brute force our ARIMA model
+# arima_brute_force_model(no_diff_series_hog)
 # sort_pdf_arima_txt()
+# arima_model(no_diff_series_hog, y_label='Predictions')
+## Brute force SARIMA model
+# sarima_model(no_diff_series_hog, y_label='Predictions')
