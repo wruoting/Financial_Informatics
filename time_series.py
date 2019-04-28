@@ -7,14 +7,14 @@ from statsmodels.tsa.ar_model import AR
 from statsmodels.tsa.stattools import acf, adfuller, kpss, pacf
 from statsmodels.graphics.tsaplots import plot_pacf
 from sklearn.metrics import mean_squared_error
-
+from seasonal_override import seasonal_decompose
+import itertools
 
 import datetime
 import matplotlib.pyplot as plt
-import matplotlib.dates as dt
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
-
+import csv
 
 def open_data(path=None):
     time_series = []
@@ -61,10 +61,14 @@ def plot_pacf_data(time_series_raw, nlags=50, name=None):
     plt.close()
 
 
-def plot_seasonal_decompose(time_series_raw):
+def plot_seasonal_decompose(time_series_raw, seasonal=False):
     time_series_raw = time_series_raw.drop(columns='Date')
-    decomposition = sm.tsa.seasonal_decompose(time_series_raw, model='additive')
-    decomposition.plot()
+    decomposition = seasonal_decompose(time_series_raw, model='additive')
+    if seasonal:
+        plt.plot(decomposition.seasonal, label='Freq: {}'.format(decomposition.freq))
+        plt.legend(loc='upper left')
+    else:
+        decomposition.plot()
     plt.show()
 
 
@@ -130,6 +134,46 @@ def arma_model(time_series_raw, coefficients=None, time_lag=10, max_lag=1, y_lab
     plt.show()
 
 
+def arima_model(time_series_raw):
+    p = d = q = range(0, 3)
+    pdq = list(itertools.product(p, d, q))
+    # We are going to brute force an arimax here
+    try:
+        f = open('ARIMA_brute_force_data.txt', 'r')
+        print('File exists')
+    except FileNotFoundError:
+        f = open('ARIMA_brute_force_data.txt', 'w+')
+
+        for param in pdq:
+            try:
+                mod = ARIMA(time_series_raw['Value'], order=param)
+                results = mod.fit(disp=-1)
+                f.write('ARIMA{}\t{}\n'.format(param, results.aic))
+                print('ARIMA{}\t{}'.format(param, results.aic))
+            except Exception:
+                f.write('ARIMA{}\t{}\n'.format(param, '999999999999999999'))
+                continue
+        f.close()
+        print('Done')
+
+
+def sort_pdf_arima_txt():
+    df = pd.DataFrame([], columns=['ARIMA_Stats', 'AIC'])
+    with open('ARIMA_brute_force_data.txt', 'r') as f:
+        content = csv.reader(f, delimiter='\t')
+        for line in content:
+            d = {'ARIMA_Stats': [str(line[0])], 'AIC': [float(line[1])]}
+            df = df.append(pd.DataFrame(data=d, columns=['ARIMA_Stats', 'AIC']))
+    df = df.sort_values(by=['AIC'])
+    try:
+        f = open('ARIMA_brute_force_data_sorted.txt', 'r')
+        print('File exists')
+    except FileNotFoundError:
+        f = open('ARIMA_brute_force_data_sorted.txt', 'w+')
+        for index, row in df.iterrows():
+            f.write('{}\t{}\n'.format(row['ARIMA_Stats'], row['AIC']))
+        f.close()
+
 # Dickey fuller test to test if time series is stationary
 # https://machinelearningmastery.com/time-series-data-stationary-python/
 # https://www.analyticsvidhya.com/blog/2018/09/non-stationary-time-series-python/
@@ -148,12 +192,12 @@ def dickey(time_series_raw, max_lag=None):
 # Null hypothesis is that the time series is stationary
 # p <= 0.5 indicates that the series is not stationary
 def kpss_test(time_series_raw, max_lag=None):
-    print ('Results of KPSS Test:')
+    print('Results of KPSS Test:')
     kpsstest = kpss(time_series_raw['Value'], lags=max_lag)
     kpss_output = pd.Series(kpsstest[0:3], index=['Test Statistic', 'p-value', 'Lags Used'])
     for key, value in kpsstest[3].items():
         kpss_output['Critical Value (%s)' % key] = value
-    print (kpss_output)
+    print(kpss_output)
 
 
 def diff_series(time_series_raw, diff=1):
@@ -166,7 +210,6 @@ def diff_series(time_series_raw, diff=1):
     return values
 
 
-# plot_seasonal_decompose(time_series_hog)
 def no_diff_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, name=None, max_lag=None):
     if dickey_toggle:
         dickey(time_series_raw, max_lag=max_lag)
@@ -188,6 +231,53 @@ def diff_one_series(time_series_raw, dickey_toggle=False, kpss_toggle=False, nam
         plot_acf_data(shift_one, name=name)
     return shift_one
 
+
+def pdf_brute_force_arimax(time_series_raw):
+    p = d = q = range(0, 3)
+    pdq = list(itertools.product(p, d, q))
+    seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
+    # We are going to brute force an arimax here
+    try:
+        f = open('ARIMAX_brute_force_data.txt', 'r')
+        print('File exists')
+    except FileNotFoundError:
+        f = open('ARIMAX_brute_force_data.txt', 'w+')
+
+        for param in pdq:
+            for param_seasonal in seasonal_pdq:
+                try:
+                    mod = sm.tsa.statespace.SARIMAX(time_series_raw['Value'],
+                                                    order=param,
+                                                    seasonal_order=param_seasonal,
+                                                    enforce_stationarity=False,
+                                                    enforce_invertibility=False)
+                    results = mod.fit(disp=-1)
+                    f.write('ARIMA{}x{}\t{}'.format(param, param_seasonal, results.aic))
+                    f.write('\n')
+                    print('ARIMA{}x{}\t{}'.format(param, param_seasonal, results.aic))
+                except Exception:
+                    f.write('ARIMA{}x{}\t{}'.format(param, param_seasonal, '999999999999999999'))
+                    continue
+        f.close()
+        print('Done')
+
+
+def sort_pdf_arimax_txt():
+    df = pd.DataFrame([], columns=['ARIMA_Stats', 'AIC'])
+    with open('ARIMAX_brute_force_data.txt', 'r') as f:
+        content = csv.reader(f, delimiter='\t')
+        for line in content:
+            d = {'ARIMA_Stats': [str(line[0])], 'AIC': [float(line[1])]}
+            df = df.append(pd.DataFrame(data=d, columns=['ARIMA_Stats', 'AIC']))
+    df = df.sort_values(by=['AIC'])
+    try:
+        f = open('ARIMAX_brute_force_data_sorted.txt', 'r')
+        print('File exists')
+    except FileNotFoundError:
+        f = open('ARIMAX_brute_force_data_sorted.txt', 'w+')
+        for index, row in df.iterrows():
+            f.write('{}\t{}\n'.format(row['ARIMA_Stats'], row['AIC']))
+        f.close()
 
 time_series_hog = open_data(path="{}".format('./ODA-PPORK_USD_LEAN_HOG_1980_2017.csv'))
 time_series_soybean = open_data(path="{}".format('./ODA-PSOYB_USD_SOYBEAN_PRICE_1980_2017.csv'))
@@ -221,16 +311,16 @@ shift_one_series_hog = diff_one_series(time_series_hog, max_lag=0, name='diff_on
 
 ## Soy Futures
 
-no_diff_series_soy = no_diff_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='no_diff_series_soy')
-shift_one_series_soy = diff_one_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='diff_one_series_soy')
+# no_diff_series_soy = no_diff_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='no_diff_series_soy')
+# shift_one_series_soy = diff_one_series(time_series_soybean, dickey_toggle=True, kpss_toggle=True, max_lag=0, name='diff_one_series_soy')
+# ar_model(no_diff_series_soy, max_lag=0, y_label='Diff 0 Values', name='Diff_0_Overlay_Soy', title='AR(0) Model')
+# ar_model(no_diff_series_soy, max_lag=1, y_label='Diff 1 Values', name='Diff_1_Overlay_Soy', title='AR(1) Model')
 
-#
-# ADF (Augmented Dickey Fuller)
-# https://freakonometrics.hypotheses.org/12729
-# https://www.investopedia.com/articles/trading/07/stationary.asp
-# https://www.xycoon.com/ma1_process.htm
-# https://machinelearningmastery.com/arima-for-time-series-forecasting-with-python/
-# https://freakonometrics.hypotheses.org/12729
-# https://www.analyticsvidhya.com/blog/2016/02/time-series-forecasting-codes-python/
-# Plotting rolling mean and std dev could help
-# https://machinelearningmastery.com/moving-average-smoothing-for-time-series-forecasting-python/
+
+## Let's do ARIMA on our hog futures to see if we can do a better job
+
+# plot_seasonal_decompose(no_diff_series_hog)
+# plot_raw_data(shift_one_series_hog, 'raw_time_series_hog_diff')
+
+# arima_model(no_diff_series_hog)
+# sort_pdf_arima_txt()
