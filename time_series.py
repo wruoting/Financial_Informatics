@@ -93,6 +93,8 @@ def ar_model(time_series_raw, time_lag=10, max_lag=1, y_label='', name=None, tit
     diff_score = time_series_raw['Value'].subtract(y_hat['Value'], axis=0)
     diff_score = diff_score.dropna()**2
     mse = diff_score.sum()
+    print(len(diff_score))
+    mse = np.divide(mse, len(diff_score))
     print("MSE: {}".format(mse))
     plt.plot(time_series_raw.index, time_series_raw['Value'], label='Real Values')
     plt.plot(y_hat.index, y_hat['Value'], label='Predicted Values')
@@ -400,7 +402,7 @@ shift_one_series_hog = diff_one_series(time_series_hog, max_lag=0, name='diff_on
 # plot_acf_data(shift_two_series, name='ACF_diff_2')
 
 # Can we improve on this series with an ARIMA?
-# ar_model(no_diff_series_hog, max_lag=0, y_label='Diff 0 Values', name='Diff_0_Overlay', title='AR(0) Model')
+ar_model(no_diff_series_hog, max_lag=0, y_label='Diff 0 Values', name='Diff_0_Overlay', title='AR(0) Model')
 # ar_model(no_diff_series_hog, max_lag=1, y_label='Diff 1 Values', name='Diff_1_Overlay', title='AR(1) Model')
 # arma_model(no_diff_series, coefficients=[1, 1], max_lag=1, y_label='Diff 1 Values')
 # arma_model(shift_one_series, coefficients=[0, 1], max_lag=0, y_label='Diff 1 Values')
