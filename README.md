@@ -1,6 +1,9 @@
 # Financial_Informatics
 Install the following before the jupyter notebook
+
+
 Use: time_series.ipynb
+
 pip install pandas
 
 pip install statsmodels
